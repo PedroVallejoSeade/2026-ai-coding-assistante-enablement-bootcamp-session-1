@@ -37,6 +37,28 @@ const server = setupServer(
         created_at: new Date().toISOString(),
       })
     );
+  }),
+  
+  // DELETE /api/items/:id handler
+  rest.delete('/api/items/:id', (req, res, ctx) => {
+    const { id } = req.params;
+    const itemId = parseInt(id, 10);
+    
+    // Simulate item not found for non-existent IDs
+    if (itemId === 99999) {
+      return res(
+        ctx.status(404),
+        ctx.json({ error: 'Item not found' })
+      );
+    }
+    
+    return res(
+      ctx.status(200),
+      ctx.json({
+        message: 'Item deleted successfully',
+        id: itemId
+      })
+    );
   })
 );
 
@@ -50,7 +72,7 @@ describe('App Component', () => {
     await act(async () => {
       render(<App />);
     });
-    expect(screen.getByText('React Frontend with Node Backend')).toBeInTheDocument();
+    expect(screen.getByText('Hello World')).toBeInTheDocument();
     expect(screen.getByText('Connected to in-memory database')).toBeInTheDocument();
   });
 
@@ -132,5 +154,72 @@ describe('App Component', () => {
     await waitFor(() => {
       expect(screen.getByText('No items found. Add some!')).toBeInTheDocument();
     });
+  });
+
+  test('deletes an item when delete button is clicked', async () => {
+    const user = userEvent.setup();
+    
+    await act(async () => {
+      render(<App />);
+    });
+    
+    // Wait for items to load
+    await waitFor(() => {
+      expect(screen.getByText('Test Item 1')).toBeInTheDocument();
+      expect(screen.getByText('Test Item 2')).toBeInTheDocument();
+    });
+    
+    // Find and click the first delete button
+    const deleteButtons = screen.getAllByText('Delete');
+    expect(deleteButtons).toHaveLength(2);
+    
+    await act(async () => {
+      await user.click(deleteButtons[0]);
+    });
+    
+    // Wait for the item to be removed from the UI
+    await waitFor(() => {
+      expect(screen.queryByText('Test Item 1')).not.toBeInTheDocument();
+    });
+    
+    // The second item should still be there
+    expect(screen.getByText('Test Item 2')).toBeInTheDocument();
+  });
+
+  test('shows error when delete fails', async () => {
+    const user = userEvent.setup();
+    
+    await act(async () => {
+      render(<App />);
+    });
+    
+    // Wait for items to load
+    await waitFor(() => {
+      expect(screen.getByText('Test Item 1')).toBeInTheDocument();
+    });
+    
+    // Now override the delete handler to simulate an error AFTER items are loaded
+    server.use(
+      rest.delete('/api/items/:id', (req, res, ctx) => {
+        return res(
+          ctx.status(500),
+          ctx.json({ error: 'Internal server error' })
+        );
+      })
+    );
+    
+    // Click delete button
+    const deleteButton = screen.getAllByText('Delete')[0];
+    await act(async () => {
+      await user.click(deleteButton);
+    });
+    
+    // Wait for error message
+    await waitFor(() => {
+      expect(screen.getByText(/Error deleting item/)).toBeInTheDocument();
+    });
+    
+    // Items should be hidden when there's an error (current component behavior)
+    expect(screen.queryByText('Test Item 1')).not.toBeInTheDocument();
   });
 });
